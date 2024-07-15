@@ -9,7 +9,7 @@ import {
   TextField,
   Button,
   Heading,
-  // Image,
+  Image,
   View,
   // Card
 } from "@aws-amplify/ui-react";
@@ -34,15 +34,26 @@ const App = ({signOut}) => {
 async function fetchNotes() {
   const apiData = await client.graphql({ query: listNotes });
   const notesFromAPI = apiData.data.listNotes.items;
+  await Promise.all(
+    notesFromAPI.map(async(note) => {
+      if(note.image) {
+        const url = await Storage.get(note.name);
+        note.image = url;
+      }
+      return note;
+    })
+  );
   setNotes(notesFromAPI);
 }
 
 async function createNote(event) {
    event.preventDefault();
    const from = new FormData(event.target);
+   const image = from.get("image");
    const data = {
     name: from.get("name"),
     description: from.get("description"),
+    image: image.name,
    };
    await client.graphql({
     query: createNoteMutation,
@@ -52,9 +63,10 @@ async function createNote(event) {
    event.target.reset();
 }
 
-async function deleteNote({ id }) {
+async function deleteNote({ id, name }) {
   const newNotes = notes.filter((note) => note.id !== id );
   setNotes(newNotes);
+  await Storage.remove(name);
   await client.graphql({
     query: deleteNoteMutation,
     variables: { input: { id } },
@@ -65,8 +77,7 @@ async function deleteNote({ id }) {
       {/* <Card>
         <Image src={logo} className='App-logo' alt='logo'/>
         <Heading level={1}>We now have Auth!</Heading>
-      </Card> */}
-
+      </Card> */} 
      <Heading level={1}>My Notes App</Heading>
       <View as='form' margin='3rem 0' onSubmit={createNote}>
         <Flex direction='row' justifyContent="center">
@@ -86,6 +97,13 @@ async function deleteNote({ id }) {
              variation='quiet'
              required
           />
+
+          <View 
+             name='image'
+             as='input'
+             type='file'
+             style={{ alignSelf: 'end'}}
+          />  
            <Button type='submit' variation='primary'>create Note</Button>
         </Flex>
       </View>
@@ -102,8 +120,15 @@ async function deleteNote({ id }) {
           {note.name}
         </Text>
         <Text as='span'>
-        {note.description}
+          {note.description}
         </Text>
+        {note.image && (
+          <Image 
+            src={note.image}
+            alt={`visual aid for ${notes.name}`}
+            style={{ width: 400 }}
+          />
+        )}
         <Button variation='link' onClick={() => deleteNote(note)}>
           Delete Note
         </Button>
